@@ -1,0 +1,330 @@
+% Created 2016-06-02 Thu 16:16
+\documentclass[aspectratio=43]{beamer}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{sourcecodepro}
+%\usepackage{sourcesanspro}
+\usepackage{arev}
+\usepackage{pgfpages}
+
+%\usetheme{Berkeley}
+%\usecolortheme{seahorse}
+%\usefonttheme{professionalfonts}
+\usefonttheme[onlysmall]{structurebold}
+\useinnertheme{}
+\useoutertheme{}
+\setbeamertemplate{navigation symbols}{\insertframenumber/\inserttotalframenumber}
+%\setbeameroption{show notes on second screen}
+
+\date{Auckland C++ Meetup\\9 August 2017}
+\title{Introduction to the Coroutines TS}
+\subtitle{Part I}
+\author[Toby Allsopp]{Toby Allsopp\\\texttt{toby@mi6.gen.nz}}
+
+\hypersetup{
+ pdfauthor={},
+ pdftitle={},
+ pdfkeywords={},
+ pdfsubject={},
+ pdfcreator={},
+ pdflang={English}}
+
+\AtBeginSection[]{
+  \begin{frame}
+  \vfill
+  \centering
+  \begin{beamercolorbox}[sep=8pt,center,shadow=true,rounded=true]{title}
+    \usebeamerfont{title}\insertsectionhead\par%
+  \end{beamercolorbox}
+  \vfill
+  \end{frame}
+}
+
+\lstset{
+    frame=single,
+    backgroundcolor=,
+    language=[11]C++,
+    basicstyle=\small\ttfamily,
+    commentstyle=\color{gray},
+    firstnumber=auto,
+    identifierstyle=\color{black},
+    keywordstyle=\bfseries,
+    numberstyle=\color{purple},
+    stringstyle=\color{red},
+    captionpos=top,
+    numbers=left,
+    numberstyle=\Tiny\color{gray},
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=true,
+    tabsize=4,
+    emph={co_yield,co_await,co_return},
+    emphstyle=\bfseries
+}
+\lstset{basicstyle=\ttfamily}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\begin{frame}
+  \frametitle{Overview}
+  \tableofcontents
+\end{frame}
+
+\section{The Technical Specification}
+
+\begin{frame}
+\end{frame}
+
+\begin{frame}
+  \frametitle{What's a Technical Specification?}
+  \pgfimage[width=\textwidth]{wg21-timeline-2017-07b.png}
+  \note{A TS is like a feature branch of the IS}
+\end{frame}
+
+\begin{frame}
+  \frametitle{The Coroutines Technical Specification}
+  \begin{itemize}
+  \item \emph{Programming Languages — C++ Extensions for Coroutines}
+  \item PDTS Draft: \href{http://wg21.link/n4663}{[N4663]} (published 2017-03-25)
+  \item TS Draft: \href{http://wg21.link/n4680}{[N4680]} (not yet published)
+  \item Championed by Gor Nishanov (MSFT)
+  \item Voted for publication at the July ISO C++ committee meeting
+    \begin{itemize}
+    \item All national body comments have been addressed
+    \item No guarantee it will be included in C++20
+    \end{itemize}
+    \pause
+  \item Implemented in MSVC and Clang
+    \begin{itemize}
+    \item Visual Studio 2015 (minor differences wrt. TS)
+    \item Clang trunk (will be version 5.0 I think)
+    \end{itemize}
+  \end{itemize}
+\end{frame}
+
+\note{We'll go into the contents of the TS soon, but first we need to answer...}
+
+\section{What's a Coroutine?}
+
+\begin{frame}
+  \frametitle{What are these things?}
+  \begin{itemize}
+  \item Lots of subtly different things in many different languages are called ``coroutines''
+  \item It's important not to get confused by experience with other kinds of coroutines
+    \pause
+  \item Generalization of functions --- coroutines \emph{are} functions
+  \item Can be suspended and resumed
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Prior Art}
+  \begin{itemize}
+  \item Boost.Coroutine
+  \item Boost.Coroutine2
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Other Proposals}
+  \begin{itemize}
+  \item call/cc
+  \end{itemize}
+\end{frame}
+
+\note{From now on, we'll focus on the kind of coroutines defined in the TS.}
+
+\section{What are they good for?}
+
+\begin{frame}
+  \frametitle{Canonical coroutine applications}
+  \begin{itemize}
+  \item Generators
+  \item Futures
+  \item Async streams
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile,fragile]
+  \frametitle{Example: Printing Primes}
+  \note{Imagine we want to print successive prime numbers until told to stop}
+\begin{lstlisting}
+struct prime_tester {
+  vector<int> primes;
+
+  bool test(int n) {
+    if (none_of(primes.begin(), primes.end(),
+          [n](int p) { return n%p == 0; })) {
+      primes.push_back(n);
+      return true;
+    }
+    return false;
+  }
+}
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile,fragile]
+  \frametitle{Example: Printing Primes}
+  \note{Imagine we want to print successive prime numbers until told to stop}
+  \begin{lstlisting}
+template <typename ShouldStop, typename Print>
+void print_primes(ShouldStop should_stop,
+                  Print print) {
+  prime_tester tester;
+  for (int n = 2; ; ++n) {
+    if (should_stop()) break; // <-- UGLY
+    if (tester.test(n))
+      print(n);
+  }
+}
+\end{lstlisting}
+\end{frame}
+\begin{frame}[fragile]
+  \frametitle{Primes generator}
+  \note{Imagine we want to print successive prime numbers until told to stop}
+  \begin{lstlisting}
+
+generator<int> primes() {
+
+  prime_tester tester;
+  for (int n = 2; ; ++n)
+
+    if (tester.test(n))
+      co_yield n;
+
+}
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Primes generator}
+  \begin{itemize}
+  \item To use the generator, just iterate over it.
+\begin{lstlisting}
+for (int n : primes()) {
+  cout << n << "\n";
+  if (n >= 100) break;
+}
+\end{lstlisting}
+  \item This is nice and clean: \lstinline~primes~ is only concerned with generating
+    all the primes and all the logic about what to do with them is external
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Primes generator}
+\begin{lstlisting}
+generator<int> primes() {
+  prime_tester tester;
+  for (int n = 2; ; ++n)
+    if (tester.test(n))
+      co_yield n;
+  }
+}
+\end{lstlisting}
+  \begin{itemize}
+  \item \lstinline~co_yield~ is the first of three new keywords
+  \item \lstinline~generator<T>~ is a class template with \lstinline~begin()~
+    and \lstinline~end()~ members
+  \item \lstinline~generator~ is not provided by the TS but you can make it
+    yourself
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Generator composability}
+\begin{lstlisting}
+generator<int> ints(int from) {
+  for (int i = from; ; ++i)
+    co_yield i;
+}
+
+template <typename Range, typename Pred>
+generator<int> filter(Range range, Pred pred) {
+  for (auto&& x : range)
+    if (pred(x))
+      co_yield x;
+}
+
+generator<int> primes() {
+  return filter(ints(2), is_prime);
+}
+\end{lstlisting}
+\end{frame}
+
+\note[itemize]
+{
+\item return type of filter is not generic enough
+\item primes is not a coroutine
+\item callers can't tell the difference
+}
+
+\begin{frame}[fragile,t]
+  \frametitle{Example: Reading from a Socket}
+  Synchronously:
+\begin{lstlisting}
+       string  connect_and_read(string host,
+                                int port) {
+  string result;
+  auto socket =          connect(host, port);
+  std::array<char, 1024> buffer;
+  while (int nread =
+                    socket.read(buffer))
+    result.append(buffer, nread);
+     return result;
+}
+\end{lstlisting}
+\end{frame}
+\begin{frame}[fragile,t]
+  \frametitle{Example: Reading from a Socket}
+  Asynchronously:
+\begin{lstlisting}
+future<string> connect_and_read(string host,
+                                int port) {
+  string result;
+  auto socket = co_await connect(host, port);
+  std::array<char, 1024> buffer;
+  while (int nread =
+           co_await socket.read(buffer))
+    result.append(buffer, nread);
+  co_return result;
+}
+\end{lstlisting}
+  \begin{itemize}
+  \item Two more new keywords: \lstinline~co_await~ and \lstinline~co_return~
+  \item \lstinline~future~ could be \lstinline~std::future~ or any other class that has the
+    coroutine customization points implemented
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Example: Fetching Primes Asynchronously}
+\begin{lstlisting}
+future<bool> is_prime(int n);
+
+stream<int> primes() {
+  for (int n : ints(2))
+    if (co_await is_prime(n))
+      co_yield n;
+}
+
+bool stop;
+for co_await (int n : primes()) {
+  cout << n << "\n";
+  cin >> stop;
+  if (stop) break;
+}
+\end{lstlisting}
+\end{frame}
+
+\end{document}
+
+% Local Variables:
+% TeX-command-extra-options: "-shell-escape"
+% End:
